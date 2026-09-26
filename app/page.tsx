@@ -1,8 +1,9 @@
 "use client";
-import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Filter, HeartHandshake, Menu, Search, ShieldAlert, X } from "lucide-react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Filter, Search, ShieldAlert, X } from "lucide-react";
 import { categories, Pattern, patterns } from "./data";
 import { searchPatterns } from "./search";
+import { Footer, Header } from "./site-chrome";
 
 const sources=[
  {title:"児童虐待の定義と対応",org:"こども家庭庁",type:"government",url:"https://www.cfa.go.jp/policies/jidougyakutai/"},
@@ -10,12 +11,19 @@ const sources=[
  {title:"体罰等によらない子育てのために",org:"こども家庭庁",type:"government",url:"https://www.cfa.go.jp/policies/jidougyakutai/taibatsu"},
 ];
 
+const subscribeUrl=(cb:()=>void)=>{window.addEventListener("popstate",cb);return()=>window.removeEventListener("popstate",cb)};
+
 export default function Home(){
- const [query,setQuery]=useState(""); const [category,setCategory]=useState("すべて"); const [age,setAge]=useState("すべて"); const [scene,setScene]=useState("すべて"); const [severity,setSeverity]=useState("すべて"); const [selected,setSelected]=useState<Pattern|null>(null); const [filtersOpen,setFiltersOpen]=useState(false); const [menuOpen,setMenuOpen]=useState(false);
+ const [query,setQuery]=useState(""); const [category,setCategory]=useState("すべて"); const [age,setAge]=useState("すべて"); const [scene,setScene]=useState("すべて"); const [severity,setSeverity]=useState("すべて"); const [selected,setSelected]=useState<Pattern|null>(null); const [filtersOpen,setFiltersOpen]=useState(false);
  const results=useMemo(()=>{return searchPatterns(patterns,query).filter(p=>{return (category==="すべて"||p.categories.includes(category))&&(age==="すべて"||p.ages.includes("全年代")||p.ages.includes(age))&&(scene==="すべて"||p.scene===scene)&&(severity==="すべて"||p.severity===severity)})},[query,category,age,scene,severity]);
- const openPattern=(p:Pattern)=>{setSelected(p);window.scrollTo({top:0,behavior:"smooth"})}; if(selected)return <Detail pattern={selected} onBack={()=>setSelected(null)} onOpen={openPattern}/>;
+ // /?pattern=pattern-41 のように詳細ページを直接開く（カテゴリマップからの遷移用）
+ const urlPatternId=useSyncExternalStore(subscribeUrl,()=>new URLSearchParams(window.location.search).get("pattern"),()=>null);
+ const current=selected??patterns.find(p=>p.id===urlPatternId)??null;
+ const openPattern=(p:Pattern)=>{setSelected(p);window.scrollTo({top:0,behavior:"smooth"})};
+ const closePattern=()=>{if(window.location.search)window.history.replaceState(null,"",window.location.pathname);setSelected(null)};
+ if(current)return <Detail pattern={current} onBack={closePattern} onOpen={openPattern}/>;
  const scenes=Array.from(new Set(patterns.map(p=>p.scene))); const activeFilters=[category,age,scene,severity].filter(v=>v!=="すべて").length;
- return <div className="site-shell"><Header menuOpen={menuOpen} setMenuOpen={setMenuOpen}/><main>
+ return <div className="site-shell"><Header/><main>
   <section className="search-hero"><div className="eyebrow"><span/>パターンを、ここで止めるために</div><h1>家庭の中で起きたことを、<br/><em>行動から理解する。</em></h1><p className="hero-copy">誰かを「毒親」と判定するのではなく、有害になりうる関わり方と、その代わりにできることを整理したライブラリです。</p><label className="search-box"><Search size={22}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="親に言われたこと・されたことを検索" aria-label="行動パターンを検索"/>{query&&<button onClick={()=>setQuery("")} aria-label="検索をクリア"><X size={18}/></button>}</label><div className="suggestions"><span>たとえば</span>{["死ねと言われた","スマホを見られた","兄弟と比較された","親の愚痴を聞かされた"].map(s=><button key={s} onClick={()=>setQuery(s)}>{s}</button>)}</div></section>
   <section className="library" id="patterns"><aside className={filtersOpen?"filters open":"filters"}><div className="filter-head"><h2>絞り込み</h2><button onClick={()=>setFiltersOpen(false)}><X/></button></div><FilterGroup title="カテゴリ" value={category} setValue={setCategory} options={categories.slice(0,10)}/><FilterGroup title="子どもの年代" value={age} setValue={setAge} options={["小学生","中高生","成人"]}/><FilterGroup title="場面" value={scene} setValue={setScene} options={scenes}/><FilterGroup title="強度" value={severity} setValue={setSeverity} options={["低","中","高"]}/>{activeFilters>0&&<button className="clear-filter" onClick={()=>{setCategory("すべて");setAge("すべて");setScene("すべて");setSeverity("すべて")}}>絞り込みを解除</button>}</aside>
   <div className="results"><div className="results-head"><div><p className="section-label">BEHAVIOR PATTERNS</p><h2>{query?`「${query}」の検索結果`:"行動パターンを探す"}</h2><p>{results.length}件のパターン</p></div><button className="filter-button" onClick={()=>setFiltersOpen(true)}><Filter size={18}/>絞り込み {activeFilters>0&&<b>{activeFilters}</b>}</button></div>{results.length?<div className="card-grid">{results.map(p=><PatternCard key={p.id} p={p} onOpen={openPattern}/>)}</div>:<div className="empty"><Search/><h3>一致するパターンが見つかりませんでした</h3><p>言葉を短くするか、絞り込みを減らしてみてください。</p></div>}</div></section>
@@ -24,7 +32,6 @@ export default function Home(){
  </main><Footer/></div>
 }
 
-function Header({menuOpen,setMenuOpen}:{menuOpen:boolean,setMenuOpen:(v:boolean)=>void}){return <header className="topbar"><a className="brand" href="#"><span className="brand-mark"><BookOpen size={19}/></span><span>毒親ライブラリ</span></a><nav className={menuOpen?"nav open":"nav"}><a href="#patterns">行動パターン</a><a href="#categories">カテゴリ</a><a href="#about">このサイトについて</a></nav><button className="menu-button" onClick={()=>setMenuOpen(!menuOpen)} aria-label="メニュー"><Menu/></button></header>}
 function PatternCard({p,onOpen}:{p:Pattern,onOpen:(p:Pattern)=>void}){return <article className="pattern-card" onClick={()=>onOpen(p)}><div className="card-tags">{p.categories.slice(0,3).map(c=><span key={c}>{c}</span>)}</div><h3>{p.title}</h3><p>{p.summary}</p><div className="card-meta"><span>{p.scene}</span><span>対象：親・養育者</span></div><button>詳しく見る <ArrowRight size={16}/></button></article>}
 function FilterGroup({title,value,setValue,options}:{title:string,value:string,setValue:(v:string)=>void,options:string[]}){return <fieldset><legend>{title}</legend><label><input type="radio" checked={value==="すべて"} onChange={()=>setValue("すべて")}/>すべて</label>{options.map(o=><label key={o}><input type="radio" checked={value===o} onChange={()=>setValue(o)}/>{o}</label>)}</fieldset>}
 
@@ -39,4 +46,4 @@ function Detail({pattern:p,onBack,onOpen}:{pattern:Pattern,onBack:()=>void,onOpe
  <Section title="参考資料" kicker="SOURCES"><div className="source-list">{sources.map(s=><a key={s.title} href={s.url} target="_blank" rel="noreferrer"><div><span>{s.type}</span><h3>{s.title}</h3><p>{s.org}</p></div><ArrowRight/></a>)}</div></Section>
  <section className="related"><p className="section-label">RELATED PATTERNS</p><h2>関連する行動パターン</h2><div className="card-grid">{related.map(x=><PatternCard key={x.id} p={x} onOpen={onOpen}/>)}</div></section></article></main><Footer/></div>}
 function Section({title,kicker,children}:{title:string,kicker:string,children:React.ReactNode}){return <section className="detail-section"><p className="section-label">{kicker}</p><h2>{title}</h2>{children}</section>}
-function Footer(){return <footer><div><div className="brand"><span className="brand-mark"><HeartHandshake size={19}/></span><span>毒親ライブラリ</span></div><p>家庭の中で繰り返される有害なパターンを、ここで止めるためのライブラリ。</p></div><div><strong>大切なお知らせ</strong><p>「毒親」は医学的な診断名ではありません。このサービスは特定の人物を診断・評価するものではありません。暴力など緊急性がある場合は、ためらわず公的な相談窓口や専門機関へ相談してください。</p></div></footer>}
+
